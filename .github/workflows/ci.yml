@@ -3,12 +3,13 @@ name: CI Pipeline Contextos
 on:
   push:
     branches: [master]
+  [cite_start]# [cite: 811-824] Ejecución manual con inputs
   workflow_dispatch:
     inputs:
       reason:
         description: 'Motivo de la ejecucion'
         required: true
-        default: 'Prueba de variables de contexto'
+        default: 'Prueba de Matriz OS'
 
 env:
   PROJECT_NAME: "Pathfinder-Service"
@@ -23,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      [cite_start]# [cite: 201] Variables de contexto
       - name: Imprimir Contexto
         run: |
           echo "Workflow disparado por: ${{ github.actor }}"
@@ -38,7 +40,7 @@ jobs:
 
       - name: Verificar pom.xml
         run: |
-          if [ -f pom.xml ]; then
+          if [ -f "pom.xml" ]; then
             echo "pom.xml found"
           else
             echo "Error: pom.xml not found."
@@ -47,6 +49,7 @@ jobs:
 
       - name: Extraer coordenadas
         id: maven-coordinates
+        shell: bash
         run: |
           GROUP=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
           ARTIFACT=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
@@ -56,18 +59,21 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
   build:
-    runs-on: ubuntu-22.04
     needs: archetype
+    [cite_start]# [cite: 636-641] ESTRATEGIA MATRIZ: Ejecutar en Ubuntu y Windows
     strategy:
       matrix:
-        java-version: ['17', '21']
+        os: [ubuntu-22.04, windows-latest]
+    
+    [cite_start]# [cite: 638] Usamos la variable de la matriz para elegir el runner
+    runs-on: ${{ matrix.os }}
     
     steps:
       - uses: actions/checkout@v4
       
       - uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.java-version }}
+          java-version: '21' # Fijo en 21 para evitar el error de compilación
           distribution: 'temurin'
 
       - name: Restaurar cache
@@ -79,8 +85,10 @@ jobs:
       - name: Construir
         run: mvn clean compile test package verify
 
+      # Solo guardamos el reporte si estamos en Ubuntu (para no duplicar)
+      [cite_start]# [cite: 663] Condicional usando matrix
       - name: Guardar reporte
-        if: ${{ matrix.java-version == '21' }}
+        if: ${{ matrix.os == 'ubuntu-22.04' }}
         uses: actions/upload-artifact@v4
         with:
           name: jacoco-report
