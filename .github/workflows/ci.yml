@@ -1,12 +1,21 @@
-name: CI Pipeline
+name: CI Pipeline Contextos
 
 on:
   push:
     branches: [master]
+  [cite_start]# [cite: 811-824] Configuración de ejecución manual con INPUTS
   workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Motivo de la ejecución'
+        required: true
+        default: 'Prueba de variables de contexto'
+
+[cite_start]# [cite: 257-268] Definición de variables de entorno GLOBALES
+env:
+  PROJECT_NAME: "Pathfinder-Service"
 
 jobs:
-  # JOB 1: Preparación y verificación de estructura [cite: 117]
   archetype:
     runs-on: ubuntu-22.04
     outputs:
@@ -16,6 +25,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      [cite_start]# [cite: 201-225, 460-471] NUEVO PASO: Imprimir variables de contexto
+      - name: Imprimir Información de Contexto
+        run: |
+          echo "Workflow disparado por: ${{ github.actor }}"
+          echo "Rama: ${{ github.ref }}"
+          echo "Sistema Operativo del Runner: ${{ runner.os }}"
+          echo "Nombre del Proyecto (ENV): ${{ env.PROJECT_NAME }}"
+          echo "Motivo (INPUT): ${{ inputs.reason }}"
+
       - uses: actions/setup-java@v4
         with:
           java-version: '21'
@@ -40,17 +58,25 @@ jobs:
           echo "artifact=${ARTIFACT}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-  # JOB 2: Construcción y Test [cite: 122]
   build:
     runs-on: ubuntu-22.04
     needs: archetype
+    [cite_start]#  ESTRATEGIA DE MATRIZ: Probar en múltiples versiones de Java
+    strategy:
+      matrix:
+        java-version: ['17', '21']
+    
     steps:
       - uses: actions/checkout@v4
       
       - uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          # Usamos la variable de la matriz
+          java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
+
+      - name: Imprimir versión de Java actual
+        run: java -version
 
       - name: Restaurar caché de dependencias
         uses: actions/cache@v4
@@ -58,22 +84,17 @@ jobs:
           path: ~/.m2/repository
           key: maven-dependencies-${{ needs.archetype.outputs.artifact }}-${{ needs.archetype.outputs.version }}
 
-      - name: Construir y verificar (Maven Verify)
+      - name: Construir y verificar
         run: mvn clean compile test package verify
 
-      - name: Guardar JAR como artefacto
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-jar
-          path: target/*.jar
-
-      - name: Guardar reporte Jacoco como artefacto
+      # Solo guardamos el reporte si es la versión 21 (para no sobrescribir)
+      - name: Guardar reporte Jacoco
+        if: ${{ matrix.java-version == '21' }}
         uses: actions/upload-artifact@v4
         with:
           name: jacoco-report
           path: target/site/jacoco/jacoco.xml
 
-  # JOB 3: Verificación de calidad (Cobertura) [cite: 130]
   coverage-check:
     runs-on: ubuntu-22.04
     needs: build
@@ -87,14 +108,10 @@ jobs:
       - name: Verificar el umbral de cobertura (80%)
         run: |
           THRESHOLD=80
-          # Extraemos el line-rate del XML. Nota: jacoco da un valor 0.X, multiplicamos por 100
           COVERAGE=$(grep -Po '<line-rate>\K[0-9.]+' reports/jacoco.xml | awk '{print $1 * 100}')
-          
           echo "Cobertura actual: $COVERAGE %"
-          
-          # Comparamos usando bc para decimales
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
-            echo "Error: La cobertura ($COVERAGE%) está por debajo del umbral ($THRESHOLD%)"
+            echo "Error: La cobertura es insuficiente."
             exit 1
           else
             echo "Éxito: La cobertura cumple el umbral."
